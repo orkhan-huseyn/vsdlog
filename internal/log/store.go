@@ -12,10 +12,10 @@ var (
 )
 
 const (
-	// length of the record is appended to the buffer
+	// a header is appended to the buffer
 	// then the actual contents of the record is written
-	// because while reading, we'll need to know how many bytes to read
-	// length of the record is 64 bit unsigned integer (so 8 bytes)
+	// because while reading, we'll need to read haeder first, then the contents
+	// currently, the header is uint64 (hence 8 bytes) showing length of the record
 	headerSizeBytes = 8
 )
 
@@ -69,6 +69,8 @@ func (s *store) Read(pos uint64) ([]byte, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// flush the writer buffer, in case we’re about to try to read a record
+	// that the buffer hasn’t flushed to disk yet
 	if err := s.buf.Flush(); err != nil {
 		return nil, err
 	}
@@ -87,4 +89,25 @@ func (s *store) Read(pos uint64) ([]byte, error) {
 	}
 
 	return contents, nil
+}
+
+func (s *store) ReadAt(b []byte, off int64) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if err := s.buf.Flush(); err != nil {
+		return 0, err
+	}
+
+	return s.File.ReadAt(b, off)
+}
+
+func (s *store) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if err := s.buf.Flush(); err != nil {
+		return err
+	}
+	return s.File.Close()
 }
